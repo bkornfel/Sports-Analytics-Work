@@ -1,0 +1,364 @@
+---
+title: "NBA HTML"
+author: "Brett Kornfeld"
+date: "1/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning= FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+## Data Read
+
+
+```{r}
+
+Nbastats <- read.csv(("C://Users/Tripl/OneDrive/Documents/R/nba.games.stats.csv"), stringsAsFactors = FALSE)
+library(prettydoc)
+library(dplyr)
+library(ggplot2)  
+library(animation)
+library(plotly)
+library(gganimate)
+library(wesanderson)
+
+```
+
+
+## Create A Season Column and Win Column
+
+```{r}
+
+Nbastats<- Nbastats %>%
+  mutate(Date = lubridate::as_date(Date), 
+         season = ifelse(Date > "2014-10-01" & Date < "2015-06-30", "2014-2015",
+                      ifelse(Date > "2015-10-01" & Date < "2016-06-30", "2015-2016", 
+                            ifelse(Date > "2016-10-01" & Date < "2017-06-30", "2016-2017", "2017-2018"))),
+         Win01= ifelse (WINorLOSS=="W", 1, 0))
+
+```
+
+
+
+Here I created a season column so as to help later in my analysis in sifting through season data. Due to changeovers in roster or coaches, individual seasons should be established for data integrity to be maintained. I also created a win loss column in order to later establish how many of the 82 games in a given season each individual team actually won. 
+
+
+## Create Effective Field Goal Percentage
+
+
+```{r}
+Nbastats <- Nbastats %>%
+  mutate(EFGperc = (FieldGoals + (.5*X3PointShots))/FieldGoalsAttempted)
+```
+
+
+
+Effective field goal percentage is a statistic that bears more relevance then the regular field goal percentage because it accounts for the fact that a made three is worth more than a two point field-goal, despite that regular field goal percentage just weighs them all the same as "shots." 
+
+
+## Summarize To Find Season Long Mean EFG% and Win-Loss Record
+
+```{r}
+
+ TeamSeasonEFG <- Nbastats %>%
+    mutate(EFGperc = (FieldGoals + (.5*X3PointShots))/FieldGoalsAttempted) %>%
+    group_by(Team, season) %>%
+    summarize(meanEFG = mean(EFGperc), WinCount = sum(Win01), THREEPOINTSHOTSPERGAME = mean(X3PointShotsAttempted), OppPtsPerGame = mean(OpponentPoints), PointsPerGame = mean(TeamPoints), SPG = mean(Steals), Opp3PtShotsAttempted = mean(Opp.3PointShotsAttempted), OppTPG = mean(Opp.Turnovers), TPG = mean(Turnovers), APG = mean(Assists))
+
+
+  
+```
+
+
+Here, I created a summary table of the data sorting by team and season in order to have the teams Effective FG% for the season and their wins in each season. I also included a bunch of other mean statistics for future exploration.
+
+
+## Histogram of Win Count Over 4 Years
+
+
+```{r}
+
+WinCountPlot <- ggplot(data=TeamSeasonEFG, aes(TeamSeasonEFG$WinCount)) + geom_bar(fill="black", color = "white") + theme_light()
+WinCountPlot + scale_fill_gradient(low="blue", high="red")
+
+```
+
+
+## Histogram of Win Count Identifying The Three Types of Teams
+
+
+```{r}
+
+WinCountScaled <- ggplot()+ geom_bar(data = TeamSeasonEFG[TeamSeasonEFG$WinCount < 30,], mapping = aes(WinCount), fill = "red", color="black")
+
+WinCountColored <- WinCountScaled + geom_bar(data = TeamSeasonEFG[TeamSeasonEFG$WinCount > 49,], mapping = aes(WinCount), fill = "gold", color="black")+ geom_bar(data = TeamSeasonEFG[TeamSeasonEFG$WinCount > 29 & TeamSeasonEFG$WinCount < 50 ,], mapping = aes(WinCount), fill = "black", color="red") + annotate("text", x =19 , y = 6, label = "Pray For Luka or Zion") + annotate("text", x =40 , y = 7, label = "NBA Purgatory") + annotate("text", x =64 , y = 6, label = "There Can Only Be One") + ggtitle("An Examination Of Win Count") 
+
+WinCountColored
+
+```
+
+
+## Win Count By Season Broken Out
+
+
+```{r}
+
+WinCountColoredFacet <- WinCountScaled + geom_bar(data = TeamSeasonEFG[TeamSeasonEFG$WinCount > 49,], mapping = aes(WinCount), fill = "gold", color="black")+ geom_bar(data = TeamSeasonEFG[TeamSeasonEFG$WinCount > 29 & TeamSeasonEFG$WinCount < 50 ,], mapping = aes(WinCount), fill = "black", color = "red") + annotate("text", x =20 , y = 5, label = "Bottom Feeders") + annotate("text", x =40 , y = 7, label = "Purgatory") + annotate("text", x =64 , y = 5, label = "Title Threats") + facet_wrap(~season) + ggtitle("An Examination Of Win Count By Season") 
+
+WinCountColoredFacet
+
+```
+
+
+Analysis:
+The above histograms show a count of win counts, colored by where the team lies in terms of practical ability to win the NBA championship. 50 is by no means a "magic number" but it is a pretty good indicator of the type of team that typically has demonstrated the ability to win the NBA championship. In breaking the historgram up by season, the insight gained is telling. As teams have begun to dive deeper and depper into the analytics of basketball, exploiting every single possible rule within the system has become more and more common. Thus, it is no surprise that 2017-2018 saw a significant increase in "bottom feeder" teams from 2014-2015. In addition to the analytics explosion, the relative sucess of the 76ers tanking experiment "The Process" could have  factored into more ownership groups being willing to go all in on the full blown awful.
+
+## Correlation Matrix Work
+
+
+```{r}
+
+library(ggplot2)
+library(corrplot)
+
+WinCorrWithNAREMOVAL<- cor(TeamSeasonEFG[, 3:9], use = "pairwise.complete.obs")
+
+knitr::kable(WinCorrWithNAREMOVAL)
+
+WinCountCorPlot <- corrplot::corrplot(WinCorrWithNAREMOVAL, order = "hclust")
+WinCountCorPlot
+
+```
+
+Analysis: 
+
+In unsurprising fashion, numerous worthwhile correlations were are to be found in this matrix. Specifically looking at mean EFG, it showes strong correlation to win count, points per game, and three point shots per game. 
+
+## Hypothesis Before Linear Model: 
+
+If a team has more assists over the course of a season, than they will have a higher win count. 
+
+
+```{r}
+
+WLBoxplot <- ggplot(Nbastats, aes(WINorLOSS, Assists)) +
+  geom_boxplot(fill = "blue", color = "red") +
+  theme_minimal()
+
+WLBoxplot
+
+```
+
+
+## Linear Model of Opponent Points Per Game and Steals Per Game
+
+# Hypothesis
+
+If a team gets more steals, then its opponent will score less.
+
+```{r}
+
+Assignment3lmtest <- lm(OppPtsPerGame ~ SPG, data = TeamSeasonEFG)
+summary(Assignment3lmtest)
+
+```
+
+
+Analysis: 
+I fail to reject the null hypothesis. The p-value was not statistically significant in any way. 
+
+## Opponent Points Per Game Vs. Steals 
+
+```{r}
+
+OppPtsVsSteals <- ggplot(TeamSeasonEFG, aes(SPG, OppPtsPerGame, col = season)) + geom_smooth(method = "lm", se = FALSE) + theme_classic()+ ggtitle("2014-2018 Analysis: Mean Points Allowed Per Game vs. Mean Steals Per Game") 
+
+OppPtsVsSteals
+
+```
+
+Analysis:
+The above visual actually shows what I had already discussed in regard to rejecting the null hypothesis. Only 2017-2018 saw a steady decrease in opponents points per game as a team got more steals per game. 
+
+
+## Granular Look At Opponents Points Per Game Vs. Steals
+
+
+```{r}
+
+OppPtsVsStealsByseason <- ggplot(TeamSeasonEFG, aes(SPG, OppPtsPerGame, col = WinCount)) + geom_point(size=3)+ geom_smooth(method = "lm", se = FALSE, color = "red")+ theme_classic()+ facet_wrap(~season) + theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=8)) + scale_color_gradient(low="green", high= "purple")+ ggtitle("Granular Season Over Season: Mean Points Allowed Per Game vs. Mean Steals Per Game") 
+
+OppPtsVsStealsByseason
+
+```
+
+Analysis: 
+
+Broken out over season to include win count, there is no statistically significant relationship between these variables when they interact with each other. 
+
+# Random Intercept Model
+
+
+```{r}
+
+library(lme4)
+
+randint <- lmer(OppPtsPerGame ~ SPG + (1|season), data = TeamSeasonEFG)
+
+summary(randint)
+
+ranef(randint)
+
+library(merTools)
+
+plotREsim(REsim(randint), labs = TRUE)
+
+confint(randint)
+
+```
+
+
+# Analysis:
+
+I found this breakdown to be fascinating. In the linear model visualization, you can clearly see the evolution of basketball. In 2014-2015, opponents points per game went up as a team got more steals. This is incredibly counter-intuitive and causes some inferential questions. 
+
+
+## 30 Team Individual Breakdown Over Four Years 
+
+
+```{r}
+
+ ThirtyTeamSplit <- ggplot(TeamSeasonEFG, aes(season, meanEFG, group=Team)) + geom_line()+
+  geom_point(aes(color=WinCount)) +
+   scale_color_gradient(low="green", high= "blue")+
+   facet_wrap(~Team) +
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=8)) + 
+  ggtitle("Mean EFG vs. Win Total Over Time") 
+ 
+ ThirtyTeamSplit
+
+```
+
+
+The above visual is a facet wrap of all 30 NBA teams over the course of 4 seasons. It shows the rise or fall in mean effective field goal % and is colored to highlight win count. Most notable here would be the rise of the Philadelphia 76ers. This rise in both variables correlates nicely with "The Process" and the pivot from tanking team to on the rise playoff contender. It also highlights the unparalelled excellence of the Golden State Warriors. 
+
+
+## Moving Visual Of Mean EFG and Win Count from 2014/2015 - 2017-2018
+
+
+```{r}
+
+MovingWinTotalEFGNBAVIZ <- TeamSeasonEFG %>%
+  plot_ly(
+    x = ~meanEFG, 
+    y = ~WinCount, 
+    color = ~Team, 
+    frame = ~season, 
+    text = ~Team, 
+    hoverinfo = "text",
+    type = 'scatter',
+    mode = 'markers'
+  ) %>%
+  layout(
+    xaxis = list(
+      type = "log"
+    )
+  )
+
+MovingWinTotalEFGNBAVIZ
+
+```
+
+
+Similarly, this is a moving interactive graphic that lets you evaluate the team performance in EFG% and Win Total over the four seasons. 
+
+
+
+## Mean EFG vs. 3 Point Shots Attempted (Sized For Win Count)
+
+```{r}
+
+SizingWithThrees<- TeamSeasonEFG %>%
+  plot_ly(
+    x = ~meanEFG, 
+    y = ~THREEPOINTSHOTSPERGAME,
+    size = ~WinCount,
+    color = ~Team, 
+    frame = ~season, 
+    text = ~Team, 
+    hoverinfo = "text",
+    type = 'scatter',
+    mode = 'markers'
+  ) %>%
+  layout(
+    xaxis = list(
+      type = "log"
+    )
+  )
+
+SizingWithThrees
+```
+
+
+# Analysis: 
+
+Here is a comparison of Mean EFG to 3 Point Shots Attempted, sizing the dots by win count in each season. The visual very clearly highlights the change in NBA play style. As teams began to embrace analytics, more and more teams began to see the value in shooting many more threes per game. As that went up, so too did meanEFG (a very good indicator of offensive efficiency being on the rise).
+
+
+```{r}
+
+A2TO <- lm(TPG ~ APG, data = TeamSeasonEFG)
+summary(A2TO)
+```
+
+
+## FACET WRAP APG vs. TPG
+
+
+```{r}
+
+A2TO30TM <- ggplot(TeamSeasonEFG, aes(season, APG, group=Team)) + geom_line()+
+  geom_point(aes(color=TPG, size = WinCount)) +
+   scale_color_gradient(low="red", high= "blue")+
+   facet_wrap(~Team) +
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=7)) + 
+  ggtitle("APG vs. TPG") 
+ 
+ A2TO30TM
+
+```
+
+ 
+
+
+```{r}
+
+AssistsVsTO <- TeamSeasonEFG %>%
+  plot_ly(
+    x = ~APG, 
+    y = ~TPG,
+    size = ~WinCount,
+    color = ~Team, 
+    frame = ~season, 
+    text = ~Team, 
+    hoverinfo = "size",
+    type = 'scatter',
+    mode = 'markers'
+  ) %>%
+  layout(
+    xaxis = list(
+      type = "lm"
+    )
+  )
+
+AssistsVsTO
+
+```
+
+
+
+
+
